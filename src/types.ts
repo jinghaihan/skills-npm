@@ -40,6 +40,11 @@ export interface CommandOptions {
    * @default []
    */
   exclude?: ExcludeItem[]
+  /**
+   * Maximum depth to scan for skills in node_modules
+   * @default 1
+   */
+  depth?: number
 }
 
 export interface NpmSkill {
@@ -75,6 +80,11 @@ export interface ScanOptions {
    * @default searchForWorkspaceRoot(process.cwd())
    */
   cwd?: string
+  /**
+   * Maximum depth to scan for skills in node_modules
+   * @default 1
+   */
+  depth?: number
 }
 
 export interface InvalidSkill {

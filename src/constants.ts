@@ -27,6 +27,7 @@ export const DEFAULT_OPTIONS: CommandOptions = {
   yes: false,
   dryRun: false,
   exclude: [],
+  depth: 1,
 }
 
 export const GITIGNORE_PATTERN = 'skills/npm-*'

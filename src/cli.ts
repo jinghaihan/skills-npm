@@ -23,6 +23,7 @@ try {
     .option('--cwd <cwd>', 'Current working directory')
     .option('--agents, -a <agents>', 'Comma-separated list of agents to install to')
     .option('--gitignore', 'Skip updating .gitignore', { default: true })
+    .option('--depth <depth>', 'Maximum depth to scan for skills in node_modules', { default: 1 })
     .option('--yes', 'Skip confirmation prompts', { default: false })
     .option('--dry-run', 'Show what would be done without making changes', { default: false })
     .action(async (options: Partial<CommandOptions>) => {
@@ -74,7 +75,10 @@ async function scanSkills(options: CommandOptions): Promise<NpmSkill[]> {
   const spinner = isTTY ? p.spinner() : null
   spinner?.start('Scanning node_modules for skills...')
 
-  const { skills: scannedSkills, invalidSkills, packageCount } = await scanNodeModules({ cwd: options.cwd })
+  const { skills: scannedSkills, invalidSkills, packageCount } = await scanNodeModules({
+    cwd: options.cwd,
+    depth: options.depth,
+  })
   const skills = filterExcludedSkills(scannedSkills, options.exclude)
   const excludedCount = scannedSkills.length - skills.length
   const hasInvalidSkills = invalidSkills.length > 0

@@ -6,65 +6,88 @@ import { createTargetName, hasValidSkillMd, isDirectoryOrSymlink, searchForWorks
 
 /**
  * Scan node_modules for packages that contain skills
- * Only scans first-level packages (not nested dependencies)
  */
 export async function scanNodeModules(options: ScanOptions = {}): Promise<ScanResult> {
   const cwd = options.cwd || searchForWorkspaceRoot(process.cwd())
+  const maxDepth = options.depth ?? 1
   const nodeModulesPath = join(cwd, 'node_modules')
   const allSkills: NpmSkill[] = []
   const allInvalidSkills: InvalidSkill[] = []
   let packageCount = 0
 
-  try {
-    const entries = await readdir(nodeModulesPath, { withFileTypes: true })
+  /**
+   * Recursively scan a node_modules directory
+   */
+  async function scanDirectory(currentPath: string, currentDepth: number): Promise<void> {
+    if (currentDepth > maxDepth)
+      return
 
-    for (const entry of entries) {
-      // Check for directory or symlink (pnpm uses symlinks)
-      if (!isDirectoryOrSymlink(entry))
-        continue
+    try {
+      const entries = await readdir(currentPath, { withFileTypes: true })
 
-      // Skip hidden directories and common non-package directories
-      if (entry.name.startsWith('.'))
-        continue
+      for (const entry of entries) {
+        // Check for directory or symlink (pnpm uses symlinks)
+        if (!isDirectoryOrSymlink(entry))
+          continue
 
-      // Handle scoped packages (@org/package)
-      if (entry.name.startsWith('@')) {
-        const scopePath = join(nodeModulesPath, entry.name)
-        try {
-          const scopedEntries = await readdir(scopePath, { withFileTypes: true })
-          for (const scopedEntry of scopedEntries) {
-            if (!isDirectoryOrSymlink(scopedEntry))
-              continue
-            packageCount++
-            const fullPackageName = `${entry.name}/${scopedEntry.name}`
-            const { skills, invalidSkills } = await scanPackageForSkills(nodeModulesPath, fullPackageName)
-            allSkills.push(...skills)
-            allInvalidSkills.push(...invalidSkills)
+        // Skip hidden directories and common non-package directories
+        if (entry.name.startsWith('.'))
+          continue
+
+        // Handle scoped packages (@org/package)
+        if (entry.name.startsWith('@')) {
+          const scopePath = join(currentPath, entry.name)
+          try {
+            const scopedEntries = await readdir(scopePath, { withFileTypes: true })
+            for (const scopedEntry of scopedEntries) {
+              if (!isDirectoryOrSymlink(scopedEntry))
+                continue
+              packageCount++
+              const fullPackageName = `${entry.name}/${scopedEntry.name}`
+              const packagePath = join(scopePath, scopedEntry.name)
+
+              // Check for skills in this package
+              const { skills, invalidSkills } = await scanPackageForSkills(packagePath, fullPackageName)
+              allSkills.push(...skills)
+              allInvalidSkills.push(...invalidSkills)
+
+              // Recursively scan nested node_modules
+              const nestedNodeModules = join(packagePath, 'node_modules')
+              await scanDirectory(nestedNodeModules, currentDepth + 1)
+            }
+          }
+          catch {
+            // Scope directory not readable
           }
         }
-        catch {
-          // Scope directory not readable
+        else {
+          packageCount++
+          const packagePath = join(currentPath, entry.name)
+
+          // Check for skills in this package
+          const { skills, invalidSkills } = await scanPackageForSkills(packagePath, entry.name)
+          allSkills.push(...skills)
+          allInvalidSkills.push(...invalidSkills)
+
+          // Recursively scan nested node_modules
+          const nestedNodeModules = join(packagePath, 'node_modules')
+          await scanDirectory(nestedNodeModules, currentDepth + 1)
         }
       }
-      else {
-        packageCount++
-        const { skills, invalidSkills } = await scanPackageForSkills(nodeModulesPath, entry.name)
-        allSkills.push(...skills)
-        allInvalidSkills.push(...invalidSkills)
-      }
+    }
+    catch {
+      // The directory doesn't exist or isn't readable
     }
   }
-  catch {
-    // The node_modules doesn't exist or isn't readable
-  }
+
+  await scanDirectory(nodeModulesPath, 1)
 
   return { skills: allSkills, invalidSkills: allInvalidSkills, packageCount }
 }
 
-export async function scanPackageForSkills(nodeModulesPath: string, packageName: string): Promise<{ skills: NpmSkill[], invalidSkills: InvalidSkill[] }> {
+export async function scanPackageForSkills(packagePath: string, packageName: string): Promise<{ skills: NpmSkill[], invalidSkills: InvalidSkill[] }> {
   const skills: NpmSkill[] = []
   const invalidSkills: InvalidSkill[] = []
-  const packagePath = join(nodeModulesPath, packageName)
   const skillsDir = join(packagePath, 'skills')
 
   try {
